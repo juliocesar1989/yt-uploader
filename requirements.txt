@@ -1,0 +1,5 @@
+customtkinter>=5.2,<6
+pillow>=10
+requests>=2.31
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
