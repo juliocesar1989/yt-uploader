@@ -103,12 +103,6 @@ class YouTubeClient:
             out.append((s["id"], s["snippet"].get("title", ""), key[-4:]))
         return out
 
-    def broadcast_status(self, broadcast_id):
-        """lifeCycleStatus da live (created, ready, testing, live, complete...) ou None se não existe."""
-        data = self._exec(self._svc().liveBroadcasts().list(part="status", id=broadcast_id))
-        items = data.get("items") or []
-        return items[0]["status"].get("lifeCycleStatus") if items else None
-
     def list_upcoming(self):
         """Lives que ainda não começaram (inclui a que o Studio prepara para a chave padrão)."""
         data = self._exec(self._svc().liveBroadcasts().list(
@@ -160,7 +154,7 @@ class YouTubeClient:
 
     def set_thumbnail(self, video_id, path):
         mime = mimetypes.guess_type(path)[0] or "image/jpeg"
-        media = MediaFileUpload(path, mimetype=mime, resumable=False)
+        media = MediaFileUpload(path, mimetype=mime, resumable=True)  # arquivos grandes (até 50 MB)
         self._exec(self._svc().thumbnails().set(videoId=video_id, media_body=media))
 
     def add_to_playlist(self, video_id, playlist_id):

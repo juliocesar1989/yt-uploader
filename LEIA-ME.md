@@ -41,7 +41,7 @@ as dependências (leva um minuto).
 
 1. Crie um perfil por jogo (barra da esquerda).
 2. **Geral:** modelo de título, os dois contadores e a descrição padrão. Variáveis:
-   - `{n}` e `{s}`: dois contadores que sobem **+1** a cada live que vai ao ar;
+   - `{n}` e `{s}`: dois contadores que sobem **+1** a cada START bem-sucedido;
    - `{n:2}`, `{s:3}`: o mesmo com zeros à esquerda (`05`, `087`);
    - `{jogo}` nome do perfil · `{data}` data de hoje.
 
@@ -59,31 +59,46 @@ as dependências (leva um minuto).
      que o OBS vai usar) e aplica título, descrição, thumbnail, tags, privacidade, aviso de IA e
      playlist nela. Se não houver live pendente, avisa e não faz nada no YouTube.
 7. Inicie a transmissão no OBS normalmente → a live já começa com os dados certos.
-8. Quer corrigir algo? Edite e clique START de novo (atualiza a mesma live pendente).
-9. O contador sobe e o item da fila sai **depois que a live realmente foi ao ar** (o programa
-   confere ao abrir e no próximo START).
+8. **Incremento:** assim que o START termina **sem nenhum erro**, `{n}` e `{s}` sobem +1 e o item
+   da fila usado sai. Se algo falhar (Twitch, YouTube, thumbnail ou playlist), nada é incrementado:
+   corrija e clique START de novo.
+9. Atenção: cada START bem-sucedido incrementa. Para corrigir algo depois de um START que deu
+   certo, volte os números em **Próximos contadores** antes de clicar START de novo.
 
 O botão **Verificar live pendente** (aba YouTube) mostra no log quais lives pendentes existem e
 qual delas o START vai atualizar (marcada com →).
 
 ## Thumbnail por episódio
 
-O caminho da thumbnail aceita as mesmas variáveis do título. Salve as thumbs numa pasta com o
-número no nome e use a variável no caminho:
+**Jeito mais simples: escolha a pasta.** Na aba YouTube, clique em **Escolher pasta…** e selecione
+a pasta onde ficam as thumbs. O programa pega sozinho o arquivo cujo nome **termina** com o número
+da vez:
 
 ```
-E:\Thumbs\Pathfinder\ep{n:2}.jpg     →  ep05.jpg, ep06.jpg, ep07.jpg…
-E:\Thumbs\Pathfinder\sessao{s:3}.png →  sessao087.png, sessao088.png…
+Livro 6 - Episódio 05.png   → usado quando {n} = 5
+ep06.jpg                    → usado quando {n} = 6
 ```
 
-A aba YouTube mostra qual arquivo a próxima live vai usar (verde = encontrado, vermelho = falta).
-Se o arquivo não existir, o START avisa e não faz nada. Um caminho sem variável continua
-usando sempre a mesma imagem.
+- "Número no nome do arquivo segue" escolhe se o número é o de `{n}` (episódio) ou `{s}` (sessão).
+- Vale o **último** número do nome (`Livro 6 - Episódio 05` → 5). Zeros à esquerda não importam.
+
+Também dá para usar um arquivo com variáveis (`E:\Thumbs\ep{n:2}.jpg`) ou um arquivo fixo
+(sempre a mesma imagem). Campo vazio = não mexe na thumbnail.
+
+**Verificação em 2 lugares:**
+1. **Na tela, antes do START:** a aba YouTube e a barra "Próxima live" mostram qual arquivo vai ser
+   usado, com a prévia. Verde = ok; vermelho = problema (não encontrado, extensão diferente de
+   JPG/PNG, maior que 50 MB, ou dois arquivos com o mesmo número).
+2. **No START:** a mesma verificação é feita de novo; se houver erro, nada é atualizado.
+
+**Botões −1 / +1** (barra "Próxima live"): mudam `{n}` e `{s}` juntos, só para conferir o título
+e a thumbnail de outros números. Não mexem no YouTube nem na Twitch. Lembre de voltar ao número
+certo antes do START.
 
 ## Limitações conhecidas
 
 - A API do YouTube **não permite** definir o campo "Jogo" da live (só o título/categoria geral).
-- Thumbnail personalizada exige canal com **telefone verificado**. Máx. 2 MB, JPG ou PNG.
+- Thumbnail personalizada exige canal com **telefone verificado**. Máx. 50 MB, JPG ou PNG (limite da API desde 14/09/2026).
 - Cada START gasta ~200 unidades de cota da API (o limite diário é 10.000).
 - Se houver várias lives pendentes, o START usa a ligada à chave do OBS (se configurada) ou a
   mais antiga. Confira com **Verificar live pendente**.

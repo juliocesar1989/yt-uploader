@@ -17,6 +17,10 @@ from live_core.youtube_api import YouTubeClient
 PRIVACY = {"Não alterar": "", "Pública": "public", "Não listada": "unlisted", "Privada": "private"}
 PRIVACY_LABEL = {v: k for k, v in PRIVACY.items()}
 NO_PLAYLIST = "(nenhuma)"
+THUMB_COUNTER = {"{n} (episódio)": "n", "{s} (sessão)": "s"}
+THUMB_COUNTER_LABEL = {v: k for k, v in THUMB_COUNTER.items()}
+OK_COLOR = ("#1a7f37", "#4cc38a")
+ERR_COLOR = ("#b42318", "#ff6b6b")
 GRAY = ("gray40", "gray60")
 
 
@@ -48,7 +52,6 @@ class App(ctk.CTk):
         last = next((p for p in self.profiles if p["id"] == self.settings.get("last_profile")), self.profiles[0])
         self._select_profile(last["id"], save_current=False)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.after(800, self._reconcile_on_launch)
 
     # ================= infraestrutura de threads =================
     def ui(self, fn):
@@ -156,8 +159,16 @@ class App(ctk.CTk):
         self.preview_yt.pack(anchor="w")
         self.preview_tw = ctk.CTkLabel(info, text="", anchor="w", justify="left", wraplength=620)
         self.preview_tw.pack(anchor="w")
-        self.preview_src = ctk.CTkLabel(info, text="", anchor="w", text_color=GRAY)
-        self.preview_src.pack(anchor="w")
+        self.preview_thumb = ctk.CTkLabel(info, text="", anchor="w", justify="left", wraplength=620)
+        self.preview_thumb.pack(anchor="w")
+        cnt = ctk.CTkFrame(info, fg_color="transparent")
+        cnt.pack(anchor="w", pady=(2, 0))
+        self.preview_src = ctk.CTkLabel(cnt, text="", anchor="w", text_color=GRAY)
+        self.preview_src.pack(side="left")
+        ctk.CTkButton(cnt, text="−1", width=40, height=24, fg_color="#555555", hover_color="#444444",
+                      command=lambda: self._bump_counters(-1)).pack(side="left", padx=(12, 4))
+        ctk.CTkButton(cnt, text="+1", width=40, height=24, fg_color="#555555", hover_color="#444444",
+                      command=lambda: self._bump_counters(1)).pack(side="left")
 
         ctk.CTkButton(bar, text="Salvar perfil", width=120, command=self._save_current).grid(row=0, column=1, padx=4)
         self.start_btn = ctk.CTkButton(bar, text="▶  START", width=170, height=50,
@@ -183,7 +194,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(cf, text="{s}").pack(side="left", padx=(24, 6))
         self.e_counter2 = ctk.CTkEntry(cf, width=80)
         self.e_counter2.pack(side="left")
-        ctk.CTkLabel(cf, text="(os dois sobem +1 a cada live que vai ao ar)", text_color=GRAY).pack(
+        ctk.CTkLabel(cf, text="(os dois sobem +1 a cada START bem-sucedido)", text_color=GRAY).pack(
             side="left", padx=12)
         ctk.CTkLabel(
             t, anchor="w", justify="left", text_color=GRAY,
@@ -256,25 +267,33 @@ class App(ctk.CTk):
         self.e_thumb = ctk.CTkEntry(f)
         self.e_thumb.grid(row=0, column=0, sticky="ew")
         self.e_thumb.bind("<KeyRelease>", self._schedule_preview)
-        ctk.CTkButton(f, text="Escolher…", width=90, command=self._pick_thumb).grid(row=0, column=1, padx=(6, 0))
+        ctk.CTkButton(f, text="Escolher pasta…", width=120, command=self._pick_thumb_folder).grid(
+            row=0, column=1, padx=(6, 0))
+        ctk.CTkButton(f, text="Arquivo…", width=80, fg_color="#555555", hover_color="#444444",
+                      command=self._pick_thumb).grid(row=0, column=2, padx=(6, 0))
         ctk.CTkButton(f, text="Tirar", width=60, fg_color="#555555", hover_color="#444444",
                       command=lambda: (self._set_entry(self.e_thumb, ""), self._refresh_preview())
-                      ).grid(row=0, column=2, padx=(6, 0))
+                      ).grid(row=0, column=3, padx=(6, 0))
         tf = ctk.CTkFrame(t, fg_color="transparent")
         tf.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
         self.thumb_holder = ctk.CTkFrame(tf, width=256, height=144)
-        self.thumb_holder.grid(row=0, column=0, rowspan=2, sticky="nw")
+        self.thumb_holder.grid(row=0, column=0, rowspan=3, sticky="nw")
         self.thumb_holder.grid_propagate(False)
         self.thumb_label = None
         self._thumb_shown = None
         ctk.CTkLabel(
-            tf, anchor="nw", justify="left", text_color=GRAY, wraplength=520,
-            text="Uma thumb por episódio: use variáveis no nome do arquivo.\n"
-                 "Ex.: E:\\Thumbs\\Pathfinder\\ep{n:2}.jpg  →  ep05.jpg, ep06.jpg…\n"
-                 "(Escolha um arquivo e troque o número do nome por {n:2} ou {s:3}.)",
+            tf, anchor="nw", justify="left", text_color=GRAY, wraplength=430,
+            text="Escolha a PASTA das thumbs: o programa pega sozinho o arquivo cujo nome termina "
+                 "com o número da vez (ex.: \"Episódio 05.png\", \"ep5.jpg\"). Aceita JPG/PNG de até 50 MB.",
         ).grid(row=0, column=1, sticky="nw", padx=12)
-        self.lbl_thumb_resolved = ctk.CTkLabel(tf, text="", anchor="nw", justify="left", wraplength=520)
-        self.lbl_thumb_resolved.grid(row=1, column=1, sticky="nw", padx=12, pady=(6, 0))
+        cf = ctk.CTkFrame(tf, fg_color="transparent")
+        cf.grid(row=1, column=1, sticky="nw", padx=12, pady=(6, 0))
+        ctk.CTkLabel(cf, text="Número no nome do arquivo segue:").pack(side="left")
+        self.om_thumb_counter = ctk.CTkOptionMenu(cf, values=list(THUMB_COUNTER), width=170,
+                                                  command=lambda _v: self._refresh_preview())
+        self.om_thumb_counter.pack(side="left", padx=8)
+        self.lbl_thumb_resolved = ctk.CTkLabel(tf, text="", anchor="nw", justify="left", wraplength=430)
+        self.lbl_thumb_resolved.grid(row=2, column=1, sticky="nw", padx=12, pady=(8, 0))
 
         ctk.CTkLabel(t, text="Playlist", anchor="w").grid(row=2, column=0, sticky="w", padx=8, pady=6)
         pf = ctk.CTkFrame(t, fg_color="transparent")
@@ -283,25 +302,23 @@ class App(ctk.CTk):
         self.om_playlist.pack(side="left")
         ctk.CTkButton(pf, text="Carregar playlists", width=140, command=self._load_playlists).pack(side="left", padx=6)
 
-        self.e_yt_tags = self._entry_row(t, 3, "Tags (separadas por vírgula)")
-        ctk.CTkLabel(t, text="Vazio = mantém as tags atuais.", anchor="w", text_color=GRAY).grid(
-            row=4, column=1, sticky="w", padx=8)
-        ctk.CTkLabel(t, text="Privacidade", anchor="w").grid(row=5, column=0, sticky="w", padx=8, pady=6)
-        self.om_privacy = ctk.CTkOptionMenu(t, values=list(PRIVACY), width=180)
-        self.om_privacy.grid(row=5, column=1, sticky="w", padx=8, pady=6)
+        self.e_yt_tags = self._entry_row(t, 3, "Tags (vírgula; vazio = mantém)")
+        ctk.CTkLabel(t, text="Privacidade", anchor="w").grid(row=4, column=0, sticky="w", padx=8, pady=6)
+        prf = ctk.CTkFrame(t, fg_color="transparent")
+        prf.grid(row=4, column=1, sticky="w", padx=8, pady=6)
+        self.om_privacy = ctk.CTkOptionMenu(prf, values=list(PRIVACY), width=150)
+        self.om_privacy.pack(side="left")
         self.v_no_synth = tk.BooleanVar(value=True)
-        ctk.CTkCheckBox(t, variable=self.v_no_synth,
-                        text='Declarar "Conteúdo alterado ou sintético" = Não (sem uso de IA)').grid(
-            row=6, column=0, columnspan=2, sticky="w", padx=8, pady=10)
+        ctk.CTkCheckBox(prf, variable=self.v_no_synth,
+                        text='"Conteúdo alterado ou sintético" = Não (sem IA)').pack(side="left", padx=20)
         hf = ctk.CTkFrame(t, fg_color="transparent")
-        hf.grid(row=7, column=0, columnspan=2, sticky="w", padx=8, pady=(10, 4))
-        ctk.CTkLabel(
-            hf, anchor="w", justify="left", text_color=GRAY,
-            text="O START não cria nem inicia live: ele atualiza a live pendente que o YouTube Studio já tem\n"
-                 "(a que o OBS vai usar). A transmissão você inicia no OBS, como sempre.",
-        ).pack(side="left")
+        hf.grid(row=5, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 4))
         ctk.CTkButton(hf, text="Verificar live pendente", width=170,
-                      command=self._check_upcoming).pack(side="left", padx=16)
+                      command=self._check_upcoming).pack(side="left")
+        ctk.CTkLabel(
+            hf, anchor="w", text_color=GRAY,
+            text="O START não cria nem inicia live: só atualiza a live pendente do Studio (a do OBS).",
+        ).pack(side="left", padx=12)
 
     def _build_twitch(self, t):
         t.grid_columnconfigure(1, weight=1)
@@ -409,6 +426,7 @@ class App(ctk.CTk):
         p["apply_youtube"] = bool(self.v_apply_yt.get())
         p["apply_twitch"] = bool(self.v_apply_tw.get())
         p["thumbnail"] = self.e_thumb.get().strip()
+        p["thumb_counter"] = THUMB_COUNTER.get(self.om_thumb_counter.get(), "n")
         p["yt_tags"] = runner.parse_tags(self.e_yt_tags.get())
         p["yt_privacy"] = PRIVACY.get(self.om_privacy.get(), "")
         p["declare_no_synthetic"] = bool(self.v_no_synth.get())
@@ -418,6 +436,21 @@ class App(ctk.CTk):
     def _show_counters(self, p):
         self._set_entry(self.e_counter, str(p["counter"]))
         self._set_entry(self.e_counter2, str(p["counter2"]))
+
+    def _bump_counters(self, delta):
+        """Botões −1/+1: mudam {n} e {s} juntos, só para conferir título e thumbnail (não chama APIs)."""
+        if self.job_running or not self.current:
+            return
+        self._form_to_profile()
+        p = self.current
+        n, s = int(p["counter"]) + delta, int(p["counter2"]) + delta
+        if n < 0 or s < 0:  # não deixa negativo e mantém os dois andando juntos
+            self.bell()
+            return
+        p["counter"], p["counter2"] = n, s
+        self._show_counters(p)
+        storage.save_profiles(self.profiles)
+        self._refresh_preview()
 
     def _profile_to_form(self):
         p = self.current
@@ -429,6 +462,7 @@ class App(ctk.CTk):
         self.v_apply_yt.set(p["apply_youtube"])
         self.v_apply_tw.set(p["apply_twitch"])
         self._set_entry(self.e_thumb, p["thumbnail"])
+        self.om_thumb_counter.set(THUMB_COUNTER_LABEL.get(p.get("thumb_counter", "n"), "{n} (episódio)"))
         self._set_entry(self.e_yt_tags, ", ".join(p["yt_tags"]))
         self.om_privacy.set(PRIVACY_LABEL.get(p["yt_privacy"], "Não alterar"))
         self.v_no_synth.set(p["declare_no_synthetic"])
@@ -453,15 +487,15 @@ class App(ctk.CTk):
         tx = runner.next_texts(p)
         self.preview_yt.configure(text=f"YouTube: {tx['title']}" if p["apply_youtube"] else "YouTube: (desligado)")
         self.preview_tw.configure(text=f"Twitch:  {tx['twitch_title']}" if p["apply_twitch"] else "Twitch:  (desligado)")
-        self._update_thumb_preview(tx["thumbnail"])
+        # 1ª verificação da thumbnail: na tela, antes do START (a 2ª é no próprio START)
+        self._update_thumb_preview(tx["thumbnail"], tx["thumbnail_error"])
+        if p["apply_youtube"]:
+            text, color = self._thumb_status(tx["thumbnail"], tx["thumbnail_error"])
+            self.preview_thumb.configure(text=text, text_color=color)
+        else:
+            self.preview_thumb.configure(text="", text_color=GRAY)
         src = f"da fila (1 de {len(p['queue'])})" if tx["from_queue"] else "do modelo do perfil"
         text = f"{{n}} = {tx['n']} · {{s}} = {tx['s']} · título {src}"
-        pend = self.settings.get("pending")
-        if pend and p["apply_youtube"]:
-            if pend["profile_id"] == p["id"]:
-                text += " · ✔ live pendente do YouTube já atualizada (START de novo atualiza de novo)"
-            else:
-                text += " · a live pendente do YouTube está com os dados de outro perfil"
         self.preview_src.configure(text=text)
 
     # ================= fila =================
@@ -567,23 +601,37 @@ class App(ctk.CTk):
             self._set_entry(self.e_thumb, str(Path(path)))
             self._refresh_preview()
 
-    def _update_thumb_preview(self, path):
-        """Mostra a thumb que será usada na próxima live (caminho já com as variáveis resolvidas)."""
+    def _pick_thumb_folder(self):
+        path = filedialog.askdirectory(parent=self, title="Pasta das thumbnails")
+        if path:
+            self._set_entry(self.e_thumb, str(Path(path)))
+            self._refresh_preview()
+
+    @staticmethod
+    def _thumb_status(path, err):
+        """Texto e cor do aviso de thumbnail (usado na aba YouTube e na barra de baixo)."""
+        if not path and not err:
+            return "Thumbnail: não será alterada (campo vazio)", GRAY
+        name = Path(path).name if path else ""
+        if err:
+            return f"Thumbnail ✖ {name + ': ' if name else ''}{err}", ERR_COLOR
+        kb = Path(path).stat().st_size / 1024
+        return f"Thumbnail ✔ {name} ({kb:.0f} KB)", OK_COLOR
+
+    def _update_thumb_preview(self, path, err=None):
+        """Mostra a thumb que o START vai enviar, já verificada (extensão e tamanho)."""
+        text, color = self._thumb_status(path, err)
+        if path:
+            text += f"\n{path}"
+        self.lbl_thumb_resolved.configure(text=text, text_color=color)
         exists = bool(path) and Path(path).is_file()
-        if not path:
-            self.lbl_thumb_resolved.configure(text="")
-        elif exists:
-            self.lbl_thumb_resolved.configure(text=f"Próxima live usa:\n{path}", text_color=("#1a7f37", "#4cc38a"))
-        else:
-            self.lbl_thumb_resolved.configure(text=f"Próxima live usaria (NÃO ENCONTRADO):\n{path}",
-                                              text_color=("#b42318", "#ff6b6b"))
-        key = (path, exists)
+        key = (path, exists, Path(path).stat().st_mtime if exists else None)
         if key == self._thumb_shown:
             return
         self._thumb_shown = key
         if self.thumb_label is not None:
             self.thumb_label.destroy()
-        kwargs = {"text": "(sem thumbnail)"}
+        kwargs = {"text": "(sem thumbnail)" if not err else "(nenhuma imagem)"}
         if path:
             if exists:
                 try:
@@ -699,35 +747,15 @@ class App(ctk.CTk):
             return
         self._set_running(True)
         self.log(f"===== START · {p['name']} =====")
-        pend = self.settings.get("pending")
-        if p["apply_youtube"] and pend:
-            # A live atualizada no START anterior já foi ao ar? Então avança os contadores.
-            self.run_bg(lambda: self._yt().broadcast_status(pend["broadcast_id"]),
-                        lambda st: self._start_after_check(p["id"], pend, st), self._start_failed)
-        else:
-            self._start_after_check(p["id"], None, None)
+        self._run_start(p["id"])
 
     def _start_failed(self, e):
         self._set_running(False)
         self._bg_error(e)
 
-    def _start_after_check(self, pid, pend, status):
-        if pend:
-            kind = runner.classify(status)
-            if kind != "reuse":
-                self._finish_pending(pend, used=(kind == "used"))
+    def _run_start(self, pid):
         prof = self._find(pid)
-        if prof is None:
-            self._set_running(False)
-            return
-        if self.current is prof:
-            self._form_to_profile()
         tx = runner.next_texts(prof)
-        errs = runner.validate(tx, prof)
-        if errs:
-            self._set_running(False)
-            messagebox.showerror("Não dá para iniciar", "\n".join(errs), parent=self)
-            return
         self.log(f"{{n}}={tx['n']} {{s}}={tx['s']}: {tx['title']}")
         snapshot = copy.deepcopy(prof)
         yt = self._yt() if prof["apply_youtube"] else None
@@ -739,62 +767,29 @@ class App(ctk.CTk):
 
         self.run_bg(work, lambda res: self._job_done(pid, tx, res), self._start_failed)
 
-    def _finish_pending(self, pend, used):
-        """Fecha a live atualizada antes: se ela foi ao ar, avança contador/fila do perfil dela."""
-        self.settings["pending"] = None
-        storage.save_settings(self.settings)
-        if used:
-            prof = self._find(pend["profile_id"])
-            if prof:
-                if self.current is prof:
-                    self._form_to_profile()
-                runner.consume(prof, pend)
-                storage.save_profiles(self.profiles)
-                if self.current is prof:
-                    self._show_counters(prof)
-                    self._refresh_queue_list()
-                self.log(f"A live nº {pend['n']} de \"{prof['name']}\" já foi ao ar — contador e fila avançados.")
-        else:
-            self.log("A live atualizada antes não existe mais no YouTube (contadores não avançaram).")
-        self._refresh_preview()
-
-    def _reconcile_on_launch(self):
-        pend = self.settings.get("pending")
-        if not pend or not storage.YOUTUBE_TOKEN_FILE.exists():
-            return
-
-        def done(status):
-            kind = runner.classify(status)
-            if kind != "reuse" and self.settings.get("pending") == pend:
-                self._finish_pending(pend, used=(kind == "used"))
-
-        self.run_bg(lambda: self._yt().broadcast_status(pend["broadcast_id"]), done,
-                    lambda e: self.log(f"Não consegui checar a live anterior: {e}"))
-
     def _job_done(self, pid, tx, res):
+        """Depois da rotina de atualização: se tudo deu certo, incrementa {n}/{s} na hora."""
         self._set_running(False)
         prof = self._find(pid)
-        if res["broadcast_id"]:
-            self.settings["pending"] = {"profile_id": pid, "broadcast_id": res["broadcast_id"],
-                                        "n": tx["n"], "from_queue": tx["from_queue"]}
-            storage.save_settings(self.settings)
-            if res["youtube"]:
-                self.log("Tudo pronto! Agora é só clicar em \"Iniciar transmissão\" no OBS.")
-                self.bell()
-            else:
-                self.log("Algo falhou no YouTube. Corrija e clique START de novo.")
-        elif prof and prof["apply_youtube"] and res["youtube"] is False:
-            self.log("O YouTube não foi atualizado (veja o motivo acima).")
-        elif prof and not prof["apply_youtube"] and res["twitch"]:
-            # Só Twitch: não há como saber quando a live acontece, então avança já.
-            if self.current is prof:
-                self._form_to_profile()
-            runner.consume(prof, tx)
-            storage.save_profiles(self.profiles)
-            if self.current is prof:
-                self._show_counters(prof)
-                self._refresh_queue_list()
-            self.log("Twitch pronta!")
+        if prof is None:
+            return
+        if res["failed"]:
+            self.log(f"✖ Falhou: {', '.join(res['failed'])}. Contadores NÃO foram incrementados — "
+                     "corrija e clique START de novo.")
+            self._refresh_preview()
+            return
+        if self.current is prof:
+            self._form_to_profile()
+        runner.consume(prof, tx)
+        storage.save_profiles(self.profiles)
+        if self.current is prof:
+            self._show_counters(prof)
+            self._refresh_queue_list()
+        self.log(f"Tudo pronto! Contadores incrementados → próximo START usa {{n}}={prof['counter']} "
+                 f"{{s}}={prof['counter2']}.")
+        if prof["apply_youtube"]:
+            self.log("Agora é só iniciar a transmissão no OBS.")
+        self.bell()
         self._refresh_preview()
 
     # ================= contas =================

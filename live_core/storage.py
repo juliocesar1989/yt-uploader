@@ -19,9 +19,6 @@ DEFAULT_SETTINGS = {
     "stream_id": "",      # chave de transmissão do YouTube usada no OBS
     "stream_label": "",
     "last_profile": "",
-    # Live criada pelo START que ainda não foi usada:
-    # {"profile_id", "broadcast_id", "n", "from_queue"}
-    "pending": None,
 }
 
 PROFILE_DEFAULTS = {
@@ -36,7 +33,8 @@ PROFILE_DEFAULTS = {
     "apply_youtube": True,
     "apply_twitch": True,
     # YouTube
-    "thumbnail": "",
+    "thumbnail": "",          # arquivo, arquivo com variáveis, ou PASTA
+    "thumb_counter": "n",     # na pasta: o número do arquivo segue {n} ou {s}
     "yt_playlist_id": "",
     "yt_playlist_name": "",
     "yt_tags": [],
