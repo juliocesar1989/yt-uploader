@@ -107,3 +107,11 @@ certo antes do START.
 
 - `data/profiles.json` — perfis · `data/settings.json` — configurações
 - `data/youtube_token.json` / `data/twitch_token.json` — logins (não compartilhe esses arquivos)
+
+## Licença
+
+Distribuído sob a licença **MIT** — veja o arquivo [LICENSE](LICENSE). Você pode usar, copiar,
+modificar e redistribuir livremente, desde que mantenha o aviso de copyright.
+
+Cada pessoa precisa criar as **próprias** credenciais do Google e da Twitch (seção
+"Configuração"). Nunca compartilhe o seu `client_secret*.json` nem a pasta `data/`.
