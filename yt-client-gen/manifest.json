@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube OAuth Client Generator",
+  "version": "1.1.0",
+  "description": "Ativa a YouTube Data API v3, cria um cliente OAuth 'App para computador' e baixa o client_secret.json automaticamente.",
+  "permissions": ["downloads", "tabs", "storage"],
+  "host_permissions": ["https://console.cloud.google.com/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Gerar client_secret" },
+  "content_scripts": [
+    {
+      "matches": ["https://console.cloud.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": ["http://127.0.0.1/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

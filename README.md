@@ -25,6 +25,25 @@ as dependências (leva um minuto).
 6. (Opcional) Ainda em Contas: **Carregar chaves** e escolha a **chave que está no OBS**. Só serve
    para escolher a live certa se houver mais de uma pendente no Studio.
 
+#### Atalho: gerar o JSON automaticamente (extensão `yt-client-gen`)
+
+Os passos 2 e 4 (e mover o JSON para a pasta do programa) podem ser feitos pelo app:
+
+1. Instale a extensão uma vez, **no perfil do Chrome que tem acesso ao Google Cloud**:
+   `chrome://extensions` → ative o **Modo do desenvolvedor** → **Carregar sem compactação** →
+   escolha a pasta `yt-client-gen` deste programa. (Se ela já estava instalada, clique em
+   **Recarregar** para pegar a versão nova.)
+2. Em **⚙ Contas e configurações**, informe o **Projeto Google Cloud** (o ID, ex.: `meu-projeto-123`).
+   O **Perfil do Chrome** já vem escolhido com o perfil onde a extensão está instalada.
+3. Clique em **Gerar automaticamente**. O app abre o Chrome nesse perfil (o Chrome não precisa
+   ser o navegador padrão), a extensão ativa a API, cria o cliente "App para computador" e baixa
+   o JSON; o app move o arquivo de Downloads para a pasta do programa e já preenche o campo.
+4. Clique em **Conectar YouTube**.
+
+A tela de consentimento (passo 3) continua manual na primeira vez de cada projeto: se faltar,
+a extensão abre a página certa; depois de configurá-la, crie o cliente na mesma aba e o JSON
+ainda é capturado e enviado ao app.
+
 > **Importante:** enquanto o app estiver em modo "Teste", o Google desconecta a cada **7 dias**.
 > Para não acontecer, na tela de consentimento clique em **Publicar app** (para uso pessoal não
 > precisa passar pela verificação; só aparece o aviso de app não verificado no login).

@@ -19,6 +19,8 @@ DEFAULT_SETTINGS = {
     "stream_id": "",      # chave de transmissão do YouTube usada no OBS
     "stream_label": "",
     "last_profile": "",
+    "gcp_project": "",    # projeto do Google Cloud usado para gerar o client_secret
+    "chrome_profile": "",  # pasta do perfil do Chrome com a extensão yt-client-gen
 }
 
 PROFILE_DEFAULTS = {

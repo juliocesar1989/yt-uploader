@@ -10,7 +10,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from PIL import Image
 
-from live_core import runner, storage
+from live_core import client_gen, runner, storage
 from live_core.twitch_api import REDIRECT_URI, TwitchClient
 from live_core.youtube_api import YouTubeClient
 
@@ -43,6 +43,7 @@ class App(ctk.CTk):
         self._ui_q = queue.Queue()
         self._preview_job = None
         self._settings_win = None
+        self._client_gen = None
         self.job_running = False
         self.playlist_by_label = {}
         self.tw_results = {}
@@ -800,7 +801,7 @@ class App(ctk.CTk):
         w = ctk.CTkToplevel(self)
         self._settings_win = w
         w.title("Contas e configurações")
-        w.geometry("680x560")
+        w.geometry("760x680")
         w.transient(self)
         w.grid_columnconfigure(1, weight=1)
         bold = ctk.CTkFont(size=15, weight="bold")
@@ -830,25 +831,86 @@ class App(ctk.CTk):
                                  text="Conectado" if storage.YOUTUBE_TOKEN_FILE.exists() else "Não conectado")
         yt_status.grid(row=2, column=1, sticky="w", padx=6)
 
-        section(3, "Twitch")
-        e_id = entry(4, "Client ID", self.settings.get("twitch_client_id", ""))
-        e_sec = entry(5, "Client Secret", self.settings.get("twitch_client_secret", ""), show="•")
-        e_redir = entry(6, "OAuth Redirect URL", REDIRECT_URI)
+        # --- gerar o client_secret pela extensão yt-client-gen ---
+        e_proj = entry(3, "Projeto Google Cloud",
+                       self.settings.get("gcp_project")
+                       or client_gen.project_id_from_secret(self.settings.get("youtube_client_secret", "")),
+                       placeholder_text="ID do projeto, ex.: meu-projeto-123")
+        profiles = client_gen.list_profiles()
+        prof_labels = {f"{name} ({d})": d for d, name in profiles}
+        prof_by_dir = {d: lb for lb, d in prof_labels.items()}
+        ctk.CTkLabel(w, text="Perfil do Chrome", anchor="w").grid(row=4, column=0, sticky="w", padx=12, pady=4)
+        pf = ctk.CTkFrame(w, fg_color="transparent")
+        pf.grid(row=4, column=1, columnspan=2, sticky="w", padx=6, pady=4)
+        om_chrome = ctk.CTkOptionMenu(pf, values=list(prof_labels) or ["(nenhum perfil encontrado)"], width=300)
+        om_chrome.set(prof_by_dir.get(self.settings.get("chrome_profile"), "(procurando a extensão…)"))
+        om_chrome.pack(side="left")
+        chrome_hint = ctk.CTkLabel(pf, text="", text_color=GRAY)
+        chrome_hint.pack(side="left", padx=8)
+        gen_status = ctk.CTkLabel(w, anchor="w", justify="left", text_color=GRAY, wraplength=420, text="")
+        gen_status.grid(row=5, column=1, sticky="w", padx=6)
+
+        def detected(dirs):
+            if not chrome_hint.winfo_exists():
+                return
+            if not dirs:
+                chrome_hint.configure(text="extensão não encontrada em nenhum perfil", text_color=ERR_COLOR)
+                if om_chrome.get() not in prof_labels:
+                    om_chrome.set("(escolha o perfil)")
+                return
+            if om_chrome.get() not in prof_labels and dirs[0] in prof_by_dir:
+                om_chrome.set(prof_by_dir[dirs[0]])
+            if prof_labels.get(om_chrome.get()) in dirs:
+                chrome_hint.configure(text="✔ extensão instalada", text_color=OK_COLOR)
+            else:
+                where = ", ".join(prof_by_dir.get(d, d) for d in dirs)
+                chrome_hint.configure(text=f"a extensão está em: {where}", text_color=ERR_COLOR)
+
+        self.run_bg(client_gen.detect_extension_profiles, detected, lambda e: detected([]))
+
+        def gen_secret():
+            project = e_proj.get().strip()
+            if not project:
+                e_proj.focus_set()
+                gen_status.configure(text="Informe o ID do projeto do Google Cloud.", text_color=ERR_COLOR)
+                return
+            chrome_dir = prof_labels.get(om_chrome.get())
+            if not chrome_dir:
+                gen_status.configure(text="Escolha o perfil do Chrome onde a extensão está instalada.",
+                                     text_color=ERR_COLOR)
+                return
+            apply_settings()
+            try:
+                self._start_client_gen(project, chrome_dir, gen_status, gen_btn, e_cs)
+            except Exception as e:  # noqa: BLE001
+                gen_status.configure(text=str(e), text_color=ERR_COLOR)
+                gen_btn.configure(state="normal")
+
+        gen_btn = ctk.CTkButton(w, text="Gerar automaticamente", width=90, command=gen_secret)
+        gen_btn.grid(row=3, column=2, padx=(0, 12), pady=4)
+        if self._client_gen is not None and self._client_gen.running:
+            gen_btn.configure(state="disabled")
+            gen_status.configure(text="Geração em andamento no Chrome…")
+
+        section(6, "Twitch")
+        e_id = entry(7, "Client ID", self.settings.get("twitch_client_id", ""))
+        e_sec = entry(8, "Client Secret", self.settings.get("twitch_client_secret", ""), show="•")
+        e_redir = entry(9, "OAuth Redirect URL", REDIRECT_URI)
         e_redir.configure(state="readonly")
         ctk.CTkLabel(w, text="(cadastre exatamente essa URL no app da Twitch)", text_color=GRAY).grid(
-            row=7, column=1, sticky="w", padx=6)
+            row=10, column=1, sticky="w", padx=6)
         tok = storage.read_json(storage.TWITCH_TOKEN_FILE, None)
         tw_status = ctk.CTkLabel(w, anchor="w", text_color=GRAY,
                                  text=f"Conectado: {tok.get('login')}" if tok else "Não conectado")
-        tw_status.grid(row=8, column=1, sticky="w", padx=6)
+        tw_status.grid(row=11, column=1, sticky="w", padx=6)
 
-        section(9, "Chave do OBS no YouTube (opcional: escolhe a live certa se houver várias pendentes)")
+        section(12, "Chave do OBS no YouTube (opcional: escolhe a live certa se houver várias pendentes)")
         streams = {}
         cur_label = self.settings.get("stream_label") or "(clique em Carregar chaves)"
-        ctk.CTkLabel(w, text="Chave", anchor="w").grid(row=10, column=0, sticky="w", padx=12, pady=4)
+        ctk.CTkLabel(w, text="Chave", anchor="w").grid(row=13, column=0, sticky="w", padx=12, pady=4)
         om_stream = ctk.CTkOptionMenu(w, values=[cur_label], width=360)
         om_stream.set(cur_label)
-        om_stream.grid(row=10, column=1, sticky="w", padx=6, pady=4)
+        om_stream.grid(row=13, column=1, sticky="w", padx=6, pady=4)
 
         def load_streams():
             def done(items):
@@ -865,10 +927,13 @@ class App(ctk.CTk):
 
             self.run_bg(lambda: self._yt().list_streams(), done)
 
-        ctk.CTkButton(w, text="Carregar chaves", command=load_streams).grid(row=10, column=2, padx=(0, 12), pady=4)
+        ctk.CTkButton(w, text="Carregar chaves", command=load_streams).grid(row=13, column=2, padx=(0, 12), pady=4)
 
         def apply_settings():
             self.settings["youtube_client_secret"] = e_cs.get().strip()
+            self.settings["gcp_project"] = e_proj.get().strip()
+            if om_chrome.get() in prof_labels:
+                self.settings["chrome_profile"] = prof_labels[om_chrome.get()]
             self.settings["twitch_client_id"] = e_id.get().strip()
             self.settings["twitch_client_secret"] = e_sec.get().strip()
             label = om_stream.get()
@@ -902,18 +967,69 @@ class App(ctk.CTk):
                                       self.log(f"Twitch conectada: {name}")), err)
 
         ctk.CTkButton(w, text="Conectar YouTube", command=connect_yt).grid(row=2, column=2, padx=(0, 12), pady=4)
-        ctk.CTkButton(w, text="Conectar Twitch", command=connect_tw).grid(row=8, column=2, padx=(0, 12), pady=4)
-        ctk.CTkLabel(w, text="Como criar as credenciais: veja o arquivo LEIA-ME.md na pasta do programa.",
-                     text_color=GRAY).grid(row=11, column=0, columnspan=3, sticky="w", padx=12, pady=(16, 4))
+        ctk.CTkButton(w, text="Conectar Twitch", command=connect_tw).grid(row=11, column=2, padx=(0, 12), pady=4)
+        ctk.CTkLabel(w, text="Como criar as credenciais: veja o arquivo README.md na pasta do programa.",
+                     text_color=GRAY).grid(row=14, column=0, columnspan=3, sticky="w", padx=12, pady=(16, 4))
         ctk.CTkButton(w, text="Salvar e fechar", command=lambda: (apply_settings(), w.destroy())).grid(
-            row=12, column=0, columnspan=3, pady=12)
+            row=15, column=0, columnspan=3, pady=12)
         w.after(150, w.lift)
+
+    def _start_client_gen(self, project, chrome_dir, status_lbl, btn, e_cs):
+        """Abre o Chrome no perfil da extensão yt-client-gen e espera o client_secret voltar.
+
+        O servidor vive no App (não na janela de configurações): se a janela for fechada no meio,
+        o resultado ainda é aplicado e aparece no log.
+        """
+        if self._client_gen is not None and self._client_gen.running:
+            raise client_gen.ClientGenError("Já existe uma geração em andamento no Chrome.")
+
+        def alive(widget):
+            try:
+                return widget.winfo_exists()
+            except tk.TclError:
+                return False
+
+        def show(text, color=GRAY):
+            if alive(status_lbl):
+                status_lbl.configure(text=text, text_color=color)
+
+        def on_status(msg, error):
+            self.ui(lambda: (show(msg, ERR_COLOR if error else GRAY), self.log(f"client_secret: {msg}")))
+
+        def on_done(path):
+            def apply():
+                self.settings["youtube_client_secret"] = str(path)
+                storage.save_settings(self.settings)
+                if alive(e_cs):
+                    self._set_entry(e_cs, str(path))
+                if alive(btn):
+                    btn.configure(state="normal")
+                show(f"✔ Salvo em {path.name}. Agora clique em Conectar YouTube.", OK_COLOR)
+                self.log(f"client_secret gerado e movido para {path}")
+            self.ui(apply)
+
+        def on_error(e):
+            def apply():
+                if alive(btn):
+                    btn.configure(state="normal")
+                show(str(e), ERR_COLOR)
+                self.log(f"client_secret: ERRO: {e}")
+            self.ui(apply)
+
+        btn.configure(state="disabled")
+        show("Abrindo o Chrome…")
+        bridge = client_gen.ClientGenBridge(on_status, on_done, on_error)
+        bridge.start(project, "YouTube Desktop", chrome_dir)
+        self._client_gen = bridge
+        self.log(f"Gerando client_secret do projeto {project} pelo Chrome ({chrome_dir})…")
 
     # ================= fechar =================
     def _on_close(self):
         if self.job_running and not messagebox.askyesno(
                 "Sair", "Ainda está preparando a live. Sair mesmo assim?", parent=self):
             return
+        if self._client_gen is not None:
+            self._client_gen.stop()
         self._form_to_profile()
         storage.save_profiles(self.profiles)
         self.destroy()

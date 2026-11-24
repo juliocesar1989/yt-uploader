@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 300px; margin: 0; padding: 14px; font: 13px/1.4 system-ui, sans-serif; color: #202124; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  label { display: block; margin: 8px 0 3px; font-weight: 600; }
+  input { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #dadce0; border-radius: 6px; font: inherit; }
+  .row { display: flex; gap: 6px; }
+  .row input { flex: 1; }
+  button { width: 100%; margin-top: 8px; padding: 9px; border: 0; border-radius: 6px; background: #1a73e8; color: #fff; font: 600 13px system-ui; cursor: pointer; }
+  button.sec { background: #e8f0fe; color: #1a73e8; }
+  button.small { width: auto; margin: 0; padding: 7px 10px; }
+  p { color: #5f6368; font-size: 12px; margin: 10px 0 0; }
+</style>
+</head>
+<body>
+  <h1>client_secret.json · YouTube API</h1>
+
+  <label for="project">ID do projeto</label>
+  <div class="row">
+    <input id="project" placeholder="meu-projeto-123">
+    <button id="detect" class="sec small" title="Pegar da aba atual">Aba</button>
+  </div>
+
+  <label for="name">Nome do cliente</label>
+  <input id="name" value="YouTube Desktop">
+
+  <button id="enable" class="sec">1 · Ativar YouTube Data API v3</button>
+  <button id="consent" class="sec">2 · Tela de consentimento (se faltar)</button>
+  <button id="create">3 · Criar cliente e baixar JSON</button>
+
+  <p>O JSON também é baixado sozinho sempre que você criar um cliente OAuth pelo Console com a extensão ativa.</p>
+  <script src="popup.js"></script>
+</body>
+</html>
