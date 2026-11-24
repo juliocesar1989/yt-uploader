@@ -10,6 +10,7 @@ Fluxo:
 import html
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -110,8 +111,53 @@ def project_id_from_secret(path):
         return ""
 
 
+def to_recycle_bin(path):
+    """Manda o arquivo para a Lixeira do Windows (o secret não pode ser baixado de novo no Console)."""
+    path = str(Path(path).resolve())
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT),
+                        ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+                        ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                        ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+        FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 4, 0x10, 0x40, 0x400
+        op = SHFILEOPSTRUCTW(wFunc=FO_DELETE, pFrom=path + "\0",
+                             fFlags=FOF_SILENT | FOF_NOCONFIRMATION | FOF_ALLOWUNDO | FOF_NOERRORUI)
+        if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) == 0 and not Path(path).exists():
+            return
+    except (ImportError, AttributeError, OSError):
+        pass
+    Path(path).unlink()
+
+
+def prune_secrets(keep, folder=storage.BASE_DIR):
+    """Deixa só `keep` entre os client_secret*.json de `folder`. Os outros vão para a Lixeira.
+
+    Não faz nada se `keep` não for um arquivo dessa pasta (não dá para saber qual manter).
+    Retorna os nomes removidos.
+    """
+    folder = Path(folder)
+    if not keep or not Path(keep).is_file() or not _same_dir(Path(keep).parent, folder):
+        return []
+    removed = []
+    for f in folder.glob("client_secret*.json"):
+        if f.is_file() and not _same_dir(f, keep):
+            to_recycle_bin(f)
+            removed.append(f.name)
+    return removed
+
+
+def _clean_name(name):
+    """client_secret_x (1).json → client_secret_x.json (sufixo que o Chrome põe em downloads repetidos)."""
+    return re.sub(r" \(\d+\)(?=\.json$)", "", name, flags=re.I)
+
+
 def move_secret(src, dest_dir=storage.BASE_DIR):
-    """Valida o JSON baixado e move para dest_dir. Retorna o caminho final."""
+    """Valida o JSON baixado, move para dest_dir e deixa só ele lá. Retorna o caminho final."""
     src = Path(src)
     if src.suffix.lower() != ".json" or not src.is_file():
         raise ClientGenError(f"Arquivo baixado não encontrado: {src}")
@@ -124,17 +170,12 @@ def move_secret(src, dest_dir=storage.BASE_DIR):
         raise ClientGenError(f"{src.name} não parece um client_secret de app para computador.") from None
 
     dest_dir = Path(dest_dir)
-    dest = dest_dir / src.name
-    if _same_dir(src, dest):
-        return dest
-    i = 1
-    while dest.exists():
-        if dest.read_bytes() == src.read_bytes():
-            src.unlink()
-            return dest
-        dest = dest_dir / f"{src.stem}_{i}{src.suffix}"
-        i += 1
-    shutil.move(str(src), str(dest))
+    dest = dest_dir / _clean_name(src.name)
+    if not _same_dir(src, dest):
+        if dest.exists():
+            to_recycle_bin(dest)  # mesmo nome, outro cliente: o antigo vai para a Lixeira
+        shutil.move(str(src), str(dest))
+    prune_secrets(dest, dest_dir)
     return dest
 
 

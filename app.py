@@ -49,6 +49,7 @@ class App(ctk.CTk):
         self.tw_results = {}
 
         self._build()
+        self._prune_secrets()
         self.after(100, self._drain)
         last = next((p for p in self.profiles if p["id"] == self.settings.get("last_profile")), self.profiles[0])
         self._select_profile(last["id"], save_current=False)
@@ -89,6 +90,16 @@ class App(ctk.CTk):
 
     def log_bg(self, msg):
         self.ui(lambda: self.log(msg))
+
+    def _prune_secrets(self):
+        """Mantém na pasta do programa só o client_secret em uso; os outros vão para a Lixeira."""
+        try:
+            removed = client_gen.prune_secrets(self.settings.get("youtube_client_secret", ""))
+        except Exception as e:  # noqa: BLE001
+            self.log(f"Não consegui limpar os client_secret antigos: {e}")
+            return
+        if removed:
+            self.log(f"client_secret antigos enviados para a Lixeira: {', '.join(removed)}")
 
     def _yt(self):
         return YouTubeClient(self.settings.get("youtube_client_secret", ""))
@@ -941,6 +952,7 @@ class App(ctk.CTk):
                 self.settings["stream_id"] = streams[label]
                 self.settings["stream_label"] = label
             storage.save_settings(self.settings)
+            self._prune_secrets()
 
         def connect_yt():
             apply_settings()
